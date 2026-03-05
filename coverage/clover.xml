@@ -1,0 +1,63 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<coverage generated="1772681603332" clover="3.2.0">
+  <project timestamp="1772681603333" name="All files">
+    <metrics statements="36" coveredstatements="36" conditionals="14" coveredconditionals="14" methods="9" coveredmethods="9" elements="59" coveredelements="59" complexity="0" loc="36" ncloc="36" packages="3" files="4" classes="4"/>
+    <package name="Kraken-Gameday-App">
+      <metrics statements="12" coveredstatements="12" conditionals="0" coveredconditionals="0" methods="3" coveredmethods="3"/>
+      <file name="App.tsx" path="C:\Code\GitHub\KrakenApp\Kraken-Gameday-App\App.tsx">
+        <metrics statements="12" coveredstatements="12" conditionals="0" coveredconditionals="0" methods="3" coveredmethods="3"/>
+        <line num="9" count="4" type="stmt"/>
+        <line num="10" count="4" type="stmt"/>
+        <line num="11" count="4" type="stmt"/>
+        <line num="13" count="4" type="stmt"/>
+        <line num="15" count="2" type="stmt"/>
+        <line num="16" count="2" type="stmt"/>
+        <line num="17" count="1" type="stmt"/>
+        <line num="19" count="1" type="stmt"/>
+        <line num="21" count="2" type="stmt"/>
+        <line num="25" count="2" type="stmt"/>
+        <line num="28" count="4" type="stmt"/>
+        <line num="37" count="1" type="stmt"/>
+      </file>
+    </package>
+    <package name="Kraken-Gameday-App.components">
+      <metrics statements="10" coveredstatements="10" conditionals="6" coveredconditionals="6" methods="4" coveredmethods="4"/>
+      <file name="GameCard.tsx" path="C:\Code\GitHub\KrakenApp\Kraken-Gameday-App\components\GameCard.tsx">
+        <metrics statements="2" coveredstatements="2" conditionals="2" coveredconditionals="2" methods="1" coveredmethods="1"/>
+        <line num="9" count="4" type="stmt"/>
+        <line num="19" count="2" type="stmt"/>
+      </file>
+      <file name="GameList.tsx" path="C:\Code\GitHub\KrakenApp\Kraken-Gameday-App\components\GameList.tsx">
+        <metrics statements="8" coveredstatements="8" conditionals="4" coveredconditionals="4" methods="3" coveredmethods="3"/>
+        <line num="12" count="3" type="cond" truecount="2" falsecount="0"/>
+        <line num="13" count="1" type="stmt"/>
+        <line num="20" count="2" type="cond" truecount="2" falsecount="0"/>
+        <line num="21" count="1" type="stmt"/>
+        <line num="28" count="1" type="stmt"/>
+        <line num="31" count="3" type="stmt"/>
+        <line num="32" count="2" type="stmt"/>
+        <line num="38" count="1" type="stmt"/>
+      </file>
+    </package>
+    <package name="Kraken-Gameday-App.services">
+      <metrics statements="14" coveredstatements="14" conditionals="8" coveredconditionals="8" methods="2" coveredmethods="2"/>
+      <file name="nhlApi.ts" path="C:\Code\GitHub\KrakenApp\Kraken-Gameday-App\services\nhlApi.ts">
+        <metrics statements="14" coveredstatements="14" conditionals="8" coveredconditionals="8" methods="2" coveredmethods="2"/>
+        <line num="3" count="1" type="stmt"/>
+        <line num="4" count="1" type="stmt"/>
+        <line num="27" count="4" type="stmt"/>
+        <line num="28" count="4" type="stmt"/>
+        <line num="29" count="4" type="cond" truecount="2" falsecount="0"/>
+        <line num="33" count="4" type="stmt"/>
+        <line num="35" count="3" type="cond" truecount="2" falsecount="0"/>
+        <line num="36" count="1" type="stmt"/>
+        <line num="39" count="2" type="stmt"/>
+        <line num="41" count="2" type="stmt"/>
+        <line num="42" count="2" type="stmt"/>
+        <line num="43" count="2" type="cond" truecount="2" falsecount="0"/>
+        <line num="47" count="2" type="stmt"/>
+        <line num="60" count="2" type="stmt"/>
+      </file>
+    </package>
+  </project>
+</coverage>

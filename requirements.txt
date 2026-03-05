@@ -1,0 +1,17 @@
+# Environment requirements for this project
+
+Node.js >= 18.18.0
+npm >= 9.0.0
+Git >= 2.40.0
+
+# Optional but recommended tools
+Expo CLI via npx (no global install required)
+EAS CLI >= 5.0.0 (for APK/cloud builds)
+
+# Optional local device/simulator tooling
+Android Studio (Android emulator)
+Xcode 15+ (iOS simulator, macOS only)
+
+# JavaScript package dependencies are managed in:
+# - package.json
+# - package-lock.json

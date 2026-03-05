@@ -32,6 +32,16 @@ describe('App', () => {
     teamSelectorMock.mockClear();
   });
 
+  function deferred<T>() {
+    let resolve!: (value: T | PromiseLike<T>) => void;
+    let reject!: (reason?: unknown) => void;
+    const promise = new Promise<T>((res, rej) => {
+      resolve = res;
+      reject = rej;
+    });
+    return { promise, resolve, reject };
+  }
+
   it('fetches the Kraken schedule by default', async () => {
     getTeamScheduleMock.mockResolvedValue([]);
     render(<App />);
@@ -176,5 +186,67 @@ describe('App', () => {
       const latestProps = gameListMock.mock.calls.at(-1)?.[0];
       expect(latestProps).toMatchObject({ games: [], loading: false, error: 'Could not load schedule' });
     });
+  });
+
+  it('refetches when selecting the same team again', async () => {
+    getTeamScheduleMock.mockResolvedValue([]);
+    render(<App />);
+
+    await waitFor(() => expect(getTeamScheduleMock).toHaveBeenCalledTimes(1));
+
+    const selectorProps = teamSelectorMock.mock.calls[0][0];
+    act(() => { selectorProps.onSelect('SEA'); });
+
+    await waitFor(() => expect(getTeamScheduleMock).toHaveBeenCalledTimes(2));
+  });
+
+  it('polls every 30 seconds after initial load', async () => {
+    getTeamScheduleMock.mockResolvedValue([]);
+    const setIntervalSpy = jest.spyOn(global, 'setInterval');
+    render(<App />);
+
+    await waitFor(() => expect(getTeamScheduleMock).toHaveBeenCalledTimes(1));
+
+    const intervalCallback = setIntervalSpy.mock.calls[0][0] as () => void;
+    await act(async () => {
+      intervalCallback();
+    });
+
+    await waitFor(() => expect(getTeamScheduleMock).toHaveBeenCalledTimes(2));
+    setIntervalSpy.mockRestore();
+  });
+
+  it('does not set state after unmount when a request resolves late', async () => {
+    const pending = deferred<never[]>();
+    getTeamScheduleMock.mockReturnValue(pending.promise);
+    const consoleErrorSpy = jest.spyOn(console, 'error').mockImplementation(() => {});
+
+    const view = render(<App />);
+    view.unmount();
+
+    await act(async () => {
+      pending.resolve([]);
+      await Promise.resolve();
+    });
+
+    expect(consoleErrorSpy).not.toHaveBeenCalled();
+    consoleErrorSpy.mockRestore();
+  });
+
+  it('does not set state after unmount when a request rejects late', async () => {
+    const pending = deferred<never[]>();
+    getTeamScheduleMock.mockReturnValue(pending.promise);
+    const consoleErrorSpy = jest.spyOn(console, 'error').mockImplementation(() => {});
+
+    const view = render(<App />);
+    view.unmount();
+
+    await act(async () => {
+      pending.reject(new Error('late failure'));
+      await Promise.resolve();
+    });
+
+    expect(consoleErrorSpy).not.toHaveBeenCalled();
+    consoleErrorSpy.mockRestore();
   });
 });

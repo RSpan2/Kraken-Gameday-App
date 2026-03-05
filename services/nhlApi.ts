@@ -36,6 +36,10 @@ interface NHLLeagueScheduleResponse {
   gameWeek: NHLScheduleDay[];
 }
 
+interface NHLScoreNowResponse {
+  games?: NHLGameResponse[];
+}
+
 function mapGameState(state: string): 'upcoming' | 'live' | 'final' {
   if (['LIVE', 'CRIT'].includes(state)) return 'live';
   if (['FINAL', 'OFF', 'OFFICIAL'].includes(state)) return 'final';
@@ -54,6 +58,11 @@ function buildLeagueNowUrl(isWeb: boolean): string {
 
 function buildLeagueWeekUrl(startDate: string, isWeb: boolean): string {
   const apiUrl = `https://api-web.nhle.com/v1/schedule/${startDate}`;
+  return isWeb ? `https://corsproxy.io/?${apiUrl}` : apiUrl;
+}
+
+function buildScoreNowUrl(isWeb: boolean): string {
+  const apiUrl = `https://api-web.nhle.com/v1/score/now?t=${Date.now()}`;
   return isWeb ? `https://corsproxy.io/?${apiUrl}` : apiUrl;
 }
 
@@ -154,12 +163,29 @@ export async function getAllGames(): Promise<Game[]> {
       nextStartDate = weekData.nextStartDate;
     }
 
-    return allDays
+    const scheduleGames = allDays
       .filter((day) => isOnOrAfterToday(day.date))
       .sort((a, b) => a.date.localeCompare(b.date))
       .flatMap((day) =>
         day.games.map((game) => mapGame(game, game.homeTeam.abbrev, day.date)),
       );
+
+    // Best-effort overlay: prefer score/now values for today's live/final updates.
+    const latestById = new Map<string, Game>();
+    try {
+      const scoreResponse = await fetch(buildScoreNowUrl(isWeb));
+      if (scoreResponse.ok) {
+        const scoreData: NHLScoreNowResponse = await scoreResponse.json();
+        const scoreGames = Array.isArray(scoreData.games) ? scoreData.games : [];
+        for (const game of scoreGames) {
+          latestById.set(game.id.toString(), mapGame(game, game.homeTeam.abbrev, game.gameDate));
+        }
+      }
+    } catch {
+      // Ignore score/now failures and return schedule data.
+    }
+
+    return scheduleGames.map((game) => latestById.get(game.id) ?? game);
   } catch {
     throw new Error('Could not load schedule');
   }

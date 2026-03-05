@@ -30,6 +30,13 @@ const makeApiGame = (overrides: {
   venue: { default: overrides.venue ?? 'Climate Pledge Arena' },
 });
 
+function isoDateOffset(daysFromToday: number): string {
+  const date = new Date();
+  date.setHours(12, 0, 0, 0);
+  date.setDate(date.getDate() + daysFromToday);
+  return date.toISOString().slice(0, 10);
+}
+
 function mockFetch(games: ReturnType<typeof makeApiGame>[]) {
   global.fetch = jest.fn().mockResolvedValue({
     ok: true,
@@ -199,18 +206,37 @@ describe('getAllGames', () => {
     jest.resetAllMocks();
   });
 
-  function mockLeagueFetch(days: { date: string; games: ReturnType<typeof makeApiGame>[] }[]) {
-    global.fetch = jest.fn().mockResolvedValue({
-      ok: true,
-      json: async () => ({ gameWeek: days }),
-    }) as unknown as typeof fetch;
+  function mockLeagueFetch(
+    days: { date: string; games: ReturnType<typeof makeApiGame>[] }[],
+    options?: {
+      nextStartDate?: string;
+      regularSeasonEndDate?: string;
+      scoreNowOk?: boolean;
+      scoreNowGames?: ReturnType<typeof makeApiGame>[];
+    },
+  ) {
+    global.fetch = jest.fn()
+      .mockResolvedValueOnce({
+        ok: true,
+        json: async () => ({
+          gameWeek: days,
+          nextStartDate: options?.nextStartDate,
+          regularSeasonEndDate: options?.regularSeasonEndDate,
+        }),
+      })
+      .mockResolvedValueOnce({
+        ok: options?.scoreNowOk ?? true,
+        json: async () => ({ games: options?.scoreNowGames ?? [] }),
+      }) as unknown as typeof fetch;
   }
 
   it('flattens games from all days into a single array', async () => {
     delete (globalThis as { document?: unknown }).document;
+    const today = isoDateOffset(0);
+    const tomorrow = isoDateOffset(1);
     mockLeagueFetch([
-      { date: '2026-01-13', games: [makeApiGame({ id: 1, homeAbbrev: 'SEA', awayAbbrev: 'VAN' })] },
-      { date: '2026-01-15', games: [makeApiGame({ id: 2, homeAbbrev: 'BOS', awayAbbrev: 'TOR' })] },
+      { date: today, games: [makeApiGame({ id: 1, gameDate: today, homeAbbrev: 'SEA', awayAbbrev: 'VAN' })] },
+      { date: tomorrow, games: [makeApiGame({ id: 2, gameDate: tomorrow, homeAbbrev: 'BOS', awayAbbrev: 'TOR' })] },
     ]);
 
     const games = await getAllGames();
@@ -221,8 +247,9 @@ describe('getAllGames', () => {
 
   it('maps home team as the perspective team', async () => {
     delete (globalThis as { document?: unknown }).document;
+    const today = isoDateOffset(0);
     mockLeagueFetch([
-      { date: '2026-01-13', games: [makeApiGame({ homeAbbrev: 'BOS', homeName: 'Boston', awayAbbrev: 'TOR', awayName: 'Toronto' })] },
+      { date: today, games: [makeApiGame({ gameDate: today, homeAbbrev: 'BOS', homeName: 'Boston', awayAbbrev: 'TOR', awayName: 'Toronto' })] },
     ]);
 
     const [game] = await getAllGames();
@@ -233,22 +260,257 @@ describe('getAllGames', () => {
 
   it('uses native URL without CORS proxy', async () => {
     delete (globalThis as { document?: unknown }).document;
-    mockLeagueFetch([]);
+    global.fetch = jest.fn()
+      .mockResolvedValueOnce({
+        ok: true,
+        json: async () => ({ gameWeek: [] }),
+      })
+      .mockResolvedValueOnce({
+        ok: true,
+        json: async () => ({ games: [] }),
+      }) as unknown as typeof fetch;
 
     await getAllGames();
 
     expect(global.fetch).toHaveBeenCalledWith('https://api-web.nhle.com/v1/schedule/now');
+    expect(global.fetch).toHaveBeenCalledWith(expect.stringContaining('https://api-web.nhle.com/v1/score/now'));
   });
 
   it('uses CORS proxy on web', async () => {
     (globalThis as { document?: unknown }).document = {};
-    mockLeagueFetch([]);
+    global.fetch = jest.fn()
+      .mockResolvedValueOnce({
+        ok: true,
+        json: async () => ({ gameWeek: [] }),
+      })
+      .mockResolvedValueOnce({
+        ok: true,
+        json: async () => ({ games: [] }),
+      }) as unknown as typeof fetch;
 
     await getAllGames();
 
     expect(global.fetch).toHaveBeenCalledWith(
       'https://corsproxy.io/?https://api-web.nhle.com/v1/schedule/now',
     );
+    expect(global.fetch).toHaveBeenCalledWith(expect.stringContaining('https://corsproxy.io/?https://api-web.nhle.com/v1/score/now'));
+  });
+
+  it('overlays score/now data onto schedule games by game id', async () => {
+    delete (globalThis as { document?: unknown }).document;
+    const today = isoDateOffset(0);
+
+    global.fetch = jest.fn()
+      .mockResolvedValueOnce({
+        ok: true,
+        json: async () => ({
+          gameWeek: [
+            {
+              date: today,
+              games: [makeApiGame({ id: 10, gameDate: today, gameState: 'LIVE', homeScore: 1, awayScore: 0 })],
+            },
+          ],
+        }),
+      })
+      .mockResolvedValueOnce({
+        ok: true,
+        json: async () => ({
+          games: [makeApiGame({ id: 10, gameDate: today, gameState: 'OFF', homeScore: 4, awayScore: 2 })],
+        }),
+      }) as unknown as typeof fetch;
+
+    const [game] = await getAllGames();
+    expect(game.status).toBe('final');
+    expect(game.teamScore).toBe(4);
+    expect(game.opponentScore).toBe(2);
+  });
+
+  it('follows nextStartDate pages on web to include later schedule weeks', async () => {
+    (globalThis as { document?: unknown }).document = {};
+    const today = isoDateOffset(0);
+    const nextWeekStart = isoDateOffset(7);
+    const seasonEnd = isoDateOffset(30);
+    const nextWeekGameDate = isoDateOffset(8);
+
+    global.fetch = jest.fn()
+      .mockResolvedValueOnce({
+        ok: true,
+        json: async () => ({
+          gameWeek: [
+            {
+              date: today,
+              games: [makeApiGame({ id: 21, gameDate: today, homeAbbrev: 'SEA', awayAbbrev: 'VAN' })],
+            },
+          ],
+          nextStartDate: nextWeekStart,
+          regularSeasonEndDate: seasonEnd,
+        }),
+      })
+      .mockResolvedValueOnce({
+        ok: true,
+        json: async () => ({
+          gameWeek: [
+            {
+              date: nextWeekGameDate,
+              games: [makeApiGame({ id: 22, gameDate: nextWeekGameDate, homeAbbrev: 'BOS', awayAbbrev: 'TOR' })],
+            },
+          ],
+        }),
+      })
+      .mockResolvedValueOnce({
+        ok: true,
+        json: async () => ({ games: [] }),
+      }) as unknown as typeof fetch;
+
+    const games = await getAllGames();
+    expect(games.map((g) => g.id)).toEqual(['21', '22']);
+    expect(global.fetch).toHaveBeenCalledWith(
+      `https://corsproxy.io/?https://api-web.nhle.com/v1/schedule/${nextWeekStart}`,
+    );
+  });
+
+  it('throws when a paged schedule fetch is non-OK', async () => {
+    delete (globalThis as { document?: unknown }).document;
+    const today = isoDateOffset(0);
+    const nextWeekStart = isoDateOffset(7);
+    const seasonEnd = isoDateOffset(30);
+
+    global.fetch = jest.fn()
+      .mockResolvedValueOnce({
+        ok: true,
+        json: async () => ({
+          gameWeek: [
+            {
+              date: today,
+              games: [makeApiGame({ id: 31, gameDate: today })],
+            },
+          ],
+          nextStartDate: nextWeekStart,
+          regularSeasonEndDate: seasonEnd,
+        }),
+      })
+      .mockResolvedValueOnce({
+        ok: false,
+      }) as unknown as typeof fetch;
+
+    await expect(getAllGames()).rejects.toThrow('Could not load schedule');
+  });
+
+  it('falls back to team name.default when placeName is missing', async () => {
+    delete (globalThis as { document?: unknown }).document;
+    const today = isoDateOffset(0);
+    const gameWithNameOnly = {
+      ...makeApiGame({ id: 40, gameDate: today }),
+      awayTeam: {
+        abbrev: 'VGK',
+        name: { default: 'Golden Knights' },
+      },
+    } as unknown as ReturnType<typeof makeApiGame>;
+    mockLeagueFetch([{ date: today, games: [gameWithNameOnly] }]);
+
+    const [game] = await getAllGames();
+    expect(game.opponent).toBe('Golden Knights');
+  });
+
+  it('falls back to team abbrev when placeName and name are missing', async () => {
+    delete (globalThis as { document?: unknown }).document;
+    const today = isoDateOffset(0);
+    const gameWithAbbrevOnly = {
+      ...makeApiGame({ id: 41, gameDate: today }),
+      awayTeam: {
+        abbrev: 'VGK',
+      },
+    } as unknown as ReturnType<typeof makeApiGame>;
+    mockLeagueFetch([{ date: today, games: [gameWithAbbrevOnly] }]);
+
+    const [game] = await getAllGames();
+    expect(game.opponent).toBe('VGK');
+  });
+
+  it('falls back venue to TBD when venue is missing', async () => {
+    delete (globalThis as { document?: unknown }).document;
+    const today = isoDateOffset(0);
+    const gameWithoutVenue = {
+      ...makeApiGame({ id: 42, gameDate: today }),
+      venue: undefined,
+    } as unknown as ReturnType<typeof makeApiGame>;
+    mockLeagueFetch([{ date: today, games: [gameWithoutVenue] }]);
+
+    const [game] = await getAllGames();
+    expect(game.venue).toBe('TBD');
+  });
+
+  it('breaks pagination when nextStartDate repeats', async () => {
+    delete (globalThis as { document?: unknown }).document;
+    const today = isoDateOffset(0);
+    const repeatedStartDate = isoDateOffset(7);
+    const seasonEnd = isoDateOffset(30);
+    const nextWeekDate = isoDateOffset(8);
+
+    global.fetch = jest.fn()
+      .mockResolvedValueOnce({
+        ok: true,
+        json: async () => ({
+          gameWeek: [{ date: today, games: [makeApiGame({ id: 50, gameDate: today })] }],
+          nextStartDate: repeatedStartDate,
+          regularSeasonEndDate: seasonEnd,
+        }),
+      })
+      .mockResolvedValueOnce({
+        ok: true,
+        json: async () => ({
+          gameWeek: [{ date: nextWeekDate, games: [makeApiGame({ id: 51, gameDate: nextWeekDate })] }],
+          nextStartDate: repeatedStartDate,
+        }),
+      })
+      .mockResolvedValueOnce({
+        ok: true,
+        json: async () => ({ games: [] }),
+      }) as unknown as typeof fetch;
+
+    const games = await getAllGames();
+    expect(games.map((g) => g.id)).toEqual(['50', '51']);
+    expect(global.fetch).toHaveBeenCalledTimes(3);
+  });
+
+  it('returns schedule games when score/now responds with non-OK', async () => {
+    delete (globalThis as { document?: unknown }).document;
+    const today = isoDateOffset(0);
+    mockLeagueFetch(
+      [{ date: today, games: [makeApiGame({ id: 60, gameDate: today, gameState: 'LIVE', homeScore: 1, awayScore: 0 })] }],
+      { scoreNowOk: false },
+    );
+
+    const [game] = await getAllGames();
+    expect(game.id).toBe('60');
+    expect(game.status).toBe('live');
+  });
+
+  it('handles non-array score/now games payload by falling back to schedule data', async () => {
+    delete (globalThis as { document?: unknown }).document;
+    const today = isoDateOffset(0);
+
+    global.fetch = jest.fn()
+      .mockResolvedValueOnce({
+        ok: true,
+        json: async () => ({
+          gameWeek: [
+            {
+              date: today,
+              games: [makeApiGame({ id: 61, gameDate: today, gameState: 'LIVE', homeScore: 2, awayScore: 1 })],
+            },
+          ],
+        }),
+      })
+      .mockResolvedValueOnce({
+        ok: true,
+        json: async () => ({ games: { bad: true } }),
+      }) as unknown as typeof fetch;
+
+    const [game] = await getAllGames();
+    expect(game.id).toBe('61');
+    expect(game.status).toBe('live');
+    expect(game.teamScore).toBe(2);
   });
 
   it('throws a friendly error on non-OK response', async () => {

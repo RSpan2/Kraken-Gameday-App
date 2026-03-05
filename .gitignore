@@ -18,6 +18,9 @@ expo-env.d.ts
 *.key
 *.mobileprovision
 
+# build/cache
+coverage/
+
 # Metro
 .metro-health-check*
 
@@ -25,6 +28,7 @@ expo-env.d.ts
 npm-debug.*
 yarn-debug.*
 yarn-error.*
+pnpm-debug.*
 
 # macOS
 .DS_Store
@@ -40,5 +44,3 @@ yarn-error.*
 # generated native folders
 /ios
 /android
-coverage/lcov.info
-coverage/lcov.info

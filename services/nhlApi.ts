@@ -4,7 +4,8 @@ const CURRENT_SEASON = '20252026';
 
 interface NHLTeamInGame {
   abbrev: string;
-  placeName: { default: string };
+  placeName?: { default: string };
+  name?: { default: string };
   score?: number;
 }
 
@@ -15,7 +16,7 @@ interface NHLGameResponse {
   gameState: string;
   homeTeam: NHLTeamInGame;
   awayTeam: NHLTeamInGame;
-  venue: {
+  venue?: {
     default: string;
   };
 }
@@ -30,6 +31,8 @@ interface NHLScheduleDay {
 }
 
 interface NHLLeagueScheduleResponse {
+  nextStartDate?: string;
+  regularSeasonEndDate?: string;
   gameWeek: NHLScheduleDay[];
 }
 
@@ -39,8 +42,18 @@ function mapGameState(state: string): 'upcoming' | 'live' | 'final' {
   return 'upcoming';
 }
 
-function buildUrl(teamCode: string, isWeb: boolean): string {
+function buildTeamUrl(teamCode: string, isWeb: boolean): string {
   const apiUrl = `https://api-web.nhle.com/v1/club-schedule-season/${teamCode}/${CURRENT_SEASON}`;
+  return isWeb ? `https://corsproxy.io/?${apiUrl}` : apiUrl;
+}
+
+function buildLeagueNowUrl(isWeb: boolean): string {
+  const apiUrl = 'https://api-web.nhle.com/v1/schedule/now';
+  return isWeb ? `https://corsproxy.io/?${apiUrl}` : apiUrl;
+}
+
+function buildLeagueWeekUrl(startDate: string, isWeb: boolean): string {
+  const apiUrl = `https://api-web.nhle.com/v1/schedule/${startDate}`;
   return isWeb ? `https://corsproxy.io/?${apiUrl}` : apiUrl;
 }
 
@@ -53,6 +66,10 @@ function formatDate(dateStr: string): string {
   });
 }
 
+function getTeamName(team: NHLTeamInGame): string {
+  return team.placeName?.default ?? team.name?.default ?? team.abbrev;
+}
+
 function mapGame(game: NHLGameResponse, teamCode: string, dateStr?: string): Game {
   const isHome = game.homeTeam.abbrev === teamCode;
   const myTeam = isHome ? game.homeTeam : game.awayTeam;
@@ -62,7 +79,7 @@ function mapGame(game: NHLGameResponse, teamCode: string, dateStr?: string): Gam
 
   return {
     id: game.id.toString(),
-    opponent: theirTeam.placeName.default,
+    opponent: getTeamName(theirTeam),
     opponentAbbrev: theirTeam.abbrev,
     date: formatDate(dateStr ?? game.gameDate),
     gameTime: new Date(game.startTimeUTC).toLocaleTimeString('en-US', {
@@ -71,7 +88,7 @@ function mapGame(game: NHLGameResponse, teamCode: string, dateStr?: string): Gam
       hour12: true,
     }),
     homeAway: isHome ? 'home' : 'away',
-    venue: game.venue.default,
+    venue: game.venue?.default ?? 'TBD',
     status,
     teamAbbrev: teamCode,
     teamScore: hasScore ? (myTeam.score as number) : null,
@@ -79,10 +96,18 @@ function mapGame(game: NHLGameResponse, teamCode: string, dateStr?: string): Gam
   };
 }
 
+function isOnOrAfterToday(dateStr: string): boolean {
+  const [year, month, day] = dateStr.split('-').map(Number);
+  const gameDate = new Date(year, month - 1, day);
+  const now = new Date();
+  const today = new Date(now.getFullYear(), now.getMonth(), now.getDate());
+  return gameDate >= today;
+}
+
 export async function getTeamSchedule(teamCode: string): Promise<Game[]> {
   try {
     const isWeb = typeof document !== 'undefined';
-    const response = await fetch(buildUrl(teamCode, isWeb));
+    const response = await fetch(buildTeamUrl(teamCode, isWeb));
 
     if (!response.ok) {
       throw new Error('Failed to fetch schedule');
@@ -90,7 +115,7 @@ export async function getTeamSchedule(teamCode: string): Promise<Game[]> {
 
     const data: NHLScheduleResponse = await response.json();
     return data.games.map((game) => mapGame(game, teamCode));
-  } catch (error) {
+  } catch {
     throw new Error('Could not load schedule');
   }
 }
@@ -102,15 +127,40 @@ export async function getKrakenSchedule(): Promise<Game[]> {
 export async function getAllGames(): Promise<Game[]> {
   try {
     const isWeb = typeof document !== 'undefined';
-    const apiUrl = 'https://api-web.nhle.com/v1/schedule/now';
-    const url = isWeb ? `https://corsproxy.io/?${apiUrl}` : apiUrl;
-    const response = await fetch(url);
-    if (!response.ok) throw new Error('Failed to fetch schedule');
-    const data: NHLLeagueScheduleResponse = await response.json();
-    return data.gameWeek.flatMap((day) =>
-      day.games.map((game) => mapGame(game, game.homeTeam.abbrev, day.date)),
-    );
-  } catch (error) {
+    const response = await fetch(buildLeagueNowUrl(isWeb));
+
+    if (!response.ok) {
+      throw new Error('Failed to fetch schedule');
+    }
+
+    const firstPage: NHLLeagueScheduleResponse = await response.json();
+    const allDays: NHLScheduleDay[] = [...firstPage.gameWeek];
+    const visitedStartDates = new Set<string>();
+
+    let nextStartDate = firstPage.nextStartDate;
+    const regularSeasonEndDate = firstPage.regularSeasonEndDate;
+
+    while (nextStartDate && regularSeasonEndDate && nextStartDate <= regularSeasonEndDate) {
+      if (visitedStartDates.has(nextStartDate)) break;
+      visitedStartDates.add(nextStartDate);
+
+      const weekResponse = await fetch(buildLeagueWeekUrl(nextStartDate, isWeb));
+      if (!weekResponse.ok) {
+        throw new Error('Failed to fetch schedule');
+      }
+
+      const weekData: NHLLeagueScheduleResponse = await weekResponse.json();
+      allDays.push(...weekData.gameWeek);
+      nextStartDate = weekData.nextStartDate;
+    }
+
+    return allDays
+      .filter((day) => isOnOrAfterToday(day.date))
+      .sort((a, b) => a.date.localeCompare(b.date))
+      .flatMap((day) =>
+        day.games.map((game) => mapGame(game, game.homeTeam.abbrev, day.date)),
+      );
+  } catch {
     throw new Error('Could not load schedule');
   }
 }

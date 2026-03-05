@@ -17,29 +17,57 @@ export default function App() {
   const [selectedTeam, setSelectedTeam] = useState<string | null>('SEA');
   const [selectorVisible, setSelectorVisible] = useState(false);
 
+  const [refreshNonce, setRefreshNonce] = useState(0);
+
+  const handleSelectTeam = (team: string | null) => {
+    if (team === selectedTeam) {
+      setRefreshNonce((n) => n + 1);
+      return;
+    }
+    setSelectedTeam(team);
+  };
+
   const selectedTeamName = selectedTeam
     ? (NHL_TEAMS.find((t) => t.abbrev === selectedTeam)?.name ?? selectedTeam)
     : 'All Teams';
 
   useEffect(() => {
-    setLoading(true);
-    setError(null);
+    let isActive = true;
 
-    async function loadSchedule() {
+    async function loadSchedule(showLoader: boolean) {
+      if (showLoader) {
+        setLoading(true);
+      }
+      setError(null);
+
       try {
         const data = selectedTeam === null
           ? await getAllGames()
           : await getTeamSchedule(selectedTeam);
+
+        if (!isActive) return;
         setGames(data);
-      } catch (err) {
+      } catch {
+        if (!isActive) return;
         setError('Could not load schedule');
       } finally {
-        setLoading(false);
+        if (!isActive) return;
+        if (showLoader) {
+          setLoading(false);
+        }
       }
     }
 
-    loadSchedule();
-  }, [selectedTeam]);
+    loadSchedule(true);
+    const intervalId = setInterval(() => {
+      loadSchedule(false);
+    }, 30000);
+
+    return () => {
+      isActive = false;
+      clearInterval(intervalId);
+    };
+  }, [selectedTeam, refreshNonce]);
 
   return (
     <View style={styles.container}>
@@ -47,6 +75,7 @@ export default function App() {
         <Text style={styles.header}>🏒 {selectedTeamName}</Text>
         <Text style={styles.chevron}>▼</Text>
       </TouchableOpacity>
+
       <GameList
         games={games}
         loading={loading}
@@ -55,12 +84,14 @@ export default function App() {
         onTabChange={setTab}
         groupByDate={selectedTeam === null}
       />
+
       <TeamSelector
         visible={selectorVisible}
         selectedTeam={selectedTeam}
-        onSelect={setSelectedTeam}
+        onSelect={handleSelectTeam}
         onClose={() => setSelectorVisible(false)}
       />
+
       <StatusBar style="auto" />
     </View>
   );

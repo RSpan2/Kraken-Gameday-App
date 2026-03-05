@@ -4,6 +4,7 @@ import { Game } from '../types/Game';
 import GameCard from './GameCard';
 
 type Tab = 'upcoming' | 'previous';
+type ListItem = { type: 'header'; date: string } | { type: 'game'; game: Game };
 
 export interface GameListProps {
   games: Game[];
@@ -11,9 +12,10 @@ export interface GameListProps {
   error: string | null;
   tab: Tab;
   onTabChange: (tab: Tab) => void;
+  groupByDate?: boolean;
 }
 
-export default function GameList({ games, loading, error, tab, onTabChange }: GameListProps) {
+export default function GameList({ games, loading, error, tab, onTabChange, groupByDate = false }: GameListProps) {
   const nextGameId = useMemo(
     () => games.find((g) => g.status === 'upcoming')?.id ?? null,
     [games],
@@ -31,6 +33,39 @@ export default function GameList({ games, loading, error, tab, onTabChange }: Ga
     return (
       <View style={styles.centered}>
         <Text style={styles.message}>❌ {error}</Text>
+      </View>
+    );
+  }
+
+  if (groupByDate) {
+    const grouped = new Map<string, Game[]>();
+    for (const game of games) {
+      const existing = grouped.get(game.date) ?? [];
+      existing.push(game);
+      grouped.set(game.date, existing);
+    }
+
+    const listData: ListItem[] = [];
+    for (const [date, dayGames] of grouped) {
+      listData.push({ type: 'header', date });
+      for (const game of dayGames) {
+        listData.push({ type: 'game', game });
+      }
+    }
+
+    return (
+      <View style={styles.container}>
+        <FlatList
+          data={listData}
+          keyExtractor={(item) => item.type === 'header' ? `header-${item.date}` : item.game.id}
+          renderItem={({ item }) => {
+            if (item.type === 'header') {
+              return <Text style={styles.dateHeader}>{item.date}</Text>;
+            }
+            return <GameCard game={item.game} isAllTeams />;
+          }}
+          contentContainerStyle={styles.list}
+        />
       </View>
     );
   }
@@ -110,5 +145,13 @@ const styles = StyleSheet.create({
   },
   list: {
     padding: 16,
+  },
+  dateHeader: {
+    color: '#99D9D9',
+    fontSize: 13,
+    fontWeight: 'bold',
+    letterSpacing: 0.5,
+    marginBottom: 8,
+    marginTop: 4,
   },
 });

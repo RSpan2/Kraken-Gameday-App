@@ -75,4 +75,21 @@ describe('GameCard', () => {
     render(<GameCard game={makeGame()} />);
     expect(screen.queryByText('NEXT GAME')).toBeNull();
   });
+
+  it('shows both abbreviations for an upcoming all-teams game', () => {
+    render(<GameCard game={makeGame()} isAllTeams />);
+    expect(screen.getByText('SEA vs VAN')).toBeTruthy();
+    expect(screen.queryByText('vs Canucks')).toBeNull();
+  });
+
+  it('hides matchup header for a live all-teams game and shows score', () => {
+    render(
+      <GameCard
+        game={makeGame({ status: 'live', teamScore: 2, opponentScore: 1 })}
+        isAllTeams
+      />,
+    );
+    expect(screen.queryByText('SEA vs VAN')).toBeNull();
+    expect(screen.getByText('SEA 2 · VAN 1')).toBeTruthy();
+  });
 });

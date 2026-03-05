@@ -4,9 +4,10 @@ import { Game } from '../types/Game';
 interface GameCardProps {
   game: Game;
   isNextGame?: boolean;
+  isAllTeams?: boolean;
 }
 
-export default function GameCard({ game, isNextGame = false }: GameCardProps) {
+export default function GameCard({ game, isNextGame = false, isAllTeams = false }: GameCardProps) {
   const isLive = game.status === 'live';
   const isFinal = game.status === 'final';
   const hasScore = game.teamScore !== null && game.opponentScore !== null;
@@ -17,7 +18,11 @@ export default function GameCard({ game, isNextGame = false }: GameCardProps) {
       {isLive && <Text style={styles.liveLabel}>LIVE</Text>}
       {isFinal && <Text style={styles.finalLabel}>FINAL</Text>}
 
-      <Text style={styles.opponent}>vs {game.opponent}</Text>
+      {isAllTeams ? (
+        !hasScore && <Text style={styles.opponent}>{game.teamAbbrev} vs {game.opponentAbbrev}</Text>
+      ) : (
+        <Text style={styles.opponent}>vs {game.opponent}</Text>
+      )}
 
       {hasScore ? (
         <Text style={styles.score}>{game.teamAbbrev} {game.teamScore} · {game.opponentAbbrev} {game.opponentScore}</Text>

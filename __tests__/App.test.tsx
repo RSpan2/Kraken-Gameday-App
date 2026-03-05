@@ -2,10 +2,11 @@ import { render, screen, waitFor, fireEvent, act } from '@testing-library/react-
 import App from '../App';
 import GameList from '../components/GameList';
 import TeamSelector from '../components/TeamSelector';
-import { getTeamSchedule } from '../services/nhlApi';
+import { getTeamSchedule, getAllGames } from '../services/nhlApi';
 
 jest.mock('../services/nhlApi', () => ({
   getTeamSchedule: jest.fn(),
+  getAllGames: jest.fn(),
 }));
 
 jest.mock('../components/GameList', () => ({
@@ -20,11 +21,13 @@ jest.mock('../components/TeamSelector', () => ({
 
 describe('App', () => {
   const getTeamScheduleMock = getTeamSchedule as jest.MockedFunction<typeof getTeamSchedule>;
+  const getAllGamesMock = getAllGames as jest.MockedFunction<typeof getAllGames>;
   const gameListMock = GameList as unknown as jest.Mock;
   const teamSelectorMock = TeamSelector as unknown as jest.Mock;
 
   beforeEach(() => {
     getTeamScheduleMock.mockReset();
+    getAllGamesMock.mockReset();
     gameListMock.mockClear();
     teamSelectorMock.mockClear();
   });
@@ -135,20 +138,43 @@ describe('App', () => {
     });
   });
 
-  it('does not fetch when All Teams is selected', async () => {
+  it('calls getAllGames and passes groupByDate=true when All Teams is selected', async () => {
     getTeamScheduleMock.mockResolvedValue([]);
+    getAllGamesMock.mockResolvedValue([]);
     render(<App />);
 
     await waitFor(() => expect(getTeamScheduleMock).toHaveBeenCalledTimes(1));
 
     const selectorProps = teamSelectorMock.mock.calls[0][0];
-    selectorProps.onSelect(null);
+    act(() => { selectorProps.onSelect(null); });
+
+    await waitFor(() => expect(getAllGamesMock).toHaveBeenCalledTimes(1));
+    expect(getTeamScheduleMock).toHaveBeenCalledTimes(1);
+
+    const latestProps = gameListMock.mock.calls.at(-1)?.[0];
+    expect(latestProps.groupByDate).toBe(true);
+  });
+
+  it('passes groupByDate=false when a specific team is selected', () => {
+    getTeamScheduleMock.mockResolvedValue([]);
+    render(<App />);
+    const props = gameListMock.mock.calls[0][0];
+    expect(props.groupByDate).toBe(false);
+  });
+
+  it('passes error to GameList when getAllGames fails', async () => {
+    getTeamScheduleMock.mockResolvedValue([]);
+    getAllGamesMock.mockRejectedValue(new Error('network error'));
+    render(<App />);
+
+    await waitFor(() => expect(getTeamScheduleMock).toHaveBeenCalledTimes(1));
+
+    const selectorProps = teamSelectorMock.mock.calls[0][0];
+    act(() => { selectorProps.onSelect(null); });
 
     await waitFor(() => {
       const latestProps = gameListMock.mock.calls.at(-1)?.[0];
-      expect(latestProps).toMatchObject({ games: [], loading: false });
+      expect(latestProps).toMatchObject({ games: [], loading: false, error: 'Could not load schedule' });
     });
-
-    expect(getTeamScheduleMock).toHaveBeenCalledTimes(1);
   });
 });

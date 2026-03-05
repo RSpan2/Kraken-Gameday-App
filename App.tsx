@@ -2,7 +2,7 @@ import { useEffect, useState } from 'react';
 import { StyleSheet, Text, View, TouchableOpacity } from 'react-native';
 import { StatusBar } from 'expo-status-bar';
 import { Game } from './types/Game';
-import { getTeamSchedule } from './services/nhlApi';
+import { getTeamSchedule, getAllGames } from './services/nhlApi';
 import GameList from './components/GameList';
 import TeamSelector from './components/TeamSelector';
 import { NHL_TEAMS } from './data/nhlTeams';
@@ -22,18 +22,14 @@ export default function App() {
     : 'All Teams';
 
   useEffect(() => {
-    if (selectedTeam === null) {
-      setGames([]);
-      setLoading(false);
-      return;
-    }
-
     setLoading(true);
     setError(null);
 
     async function loadSchedule() {
       try {
-        const data = await getTeamSchedule(selectedTeam as string);
+        const data = selectedTeam === null
+          ? await getAllGames()
+          : await getTeamSchedule(selectedTeam);
         setGames(data);
       } catch (err) {
         setError('Could not load schedule');
@@ -57,6 +53,7 @@ export default function App() {
         error={error}
         tab={tab}
         onTabChange={setTab}
+        groupByDate={selectedTeam === null}
       />
       <TeamSelector
         visible={selectorVisible}

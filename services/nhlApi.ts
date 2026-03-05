@@ -24,6 +24,15 @@ interface NHLScheduleResponse {
   games: NHLGameResponse[];
 }
 
+interface NHLScheduleDay {
+  date: string;
+  games: NHLGameResponse[];
+}
+
+interface NHLLeagueScheduleResponse {
+  gameWeek: NHLScheduleDay[];
+}
+
 function mapGameState(state: string): 'upcoming' | 'live' | 'final' {
   if (['LIVE', 'CRIT'].includes(state)) return 'live';
   if (['FINAL', 'OFF', 'OFFICIAL'].includes(state)) return 'final';
@@ -35,7 +44,16 @@ function buildUrl(teamCode: string, isWeb: boolean): string {
   return isWeb ? `https://corsproxy.io/?${apiUrl}` : apiUrl;
 }
 
-function mapGame(game: NHLGameResponse, teamCode: string): Game {
+function formatDate(dateStr: string): string {
+  const [year, month, day] = dateStr.split('-').map(Number);
+  return new Date(year, month - 1, day).toLocaleDateString('en-US', {
+    weekday: 'short',
+    month: 'short',
+    day: 'numeric',
+  });
+}
+
+function mapGame(game: NHLGameResponse, teamCode: string, dateStr?: string): Game {
   const isHome = game.homeTeam.abbrev === teamCode;
   const myTeam = isHome ? game.homeTeam : game.awayTeam;
   const theirTeam = isHome ? game.awayTeam : game.homeTeam;
@@ -46,11 +64,7 @@ function mapGame(game: NHLGameResponse, teamCode: string): Game {
     id: game.id.toString(),
     opponent: theirTeam.placeName.default,
     opponentAbbrev: theirTeam.abbrev,
-    date: new Date(game.gameDate).toLocaleDateString('en-US', {
-      weekday: 'short',
-      month: 'short',
-      day: 'numeric',
-    }),
+    date: formatDate(dateStr ?? game.gameDate),
     gameTime: new Date(game.startTimeUTC).toLocaleTimeString('en-US', {
       hour: 'numeric',
       minute: '2-digit',
@@ -83,4 +97,20 @@ export async function getTeamSchedule(teamCode: string): Promise<Game[]> {
 
 export async function getKrakenSchedule(): Promise<Game[]> {
   return getTeamSchedule('SEA');
+}
+
+export async function getAllGames(): Promise<Game[]> {
+  try {
+    const isWeb = typeof document !== 'undefined';
+    const apiUrl = 'https://api-web.nhle.com/v1/schedule/now';
+    const url = isWeb ? `https://corsproxy.io/?${apiUrl}` : apiUrl;
+    const response = await fetch(url);
+    if (!response.ok) throw new Error('Failed to fetch schedule');
+    const data: NHLLeagueScheduleResponse = await response.json();
+    return data.gameWeek.flatMap((day) =>
+      day.games.map((game) => mapGame(game, game.homeTeam.abbrev, day.date)),
+    );
+  } catch (error) {
+    throw new Error('Could not load schedule');
+  }
 }

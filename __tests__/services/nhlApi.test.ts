@@ -1,4 +1,4 @@
-import { getKrakenSchedule, getTeamSchedule } from '../../services/nhlApi';
+import { getKrakenSchedule, getTeamSchedule, getAllGames } from '../../services/nhlApi';
 
 const makeApiGame = (overrides: {
   id?: number;
@@ -182,6 +182,87 @@ describe('getTeamSchedule', () => {
     global.fetch = jest.fn().mockRejectedValue(new Error('network error')) as unknown as typeof fetch;
 
     await expect(getTeamSchedule('SEA')).rejects.toThrow('Could not load schedule');
+  });
+});
+
+describe('getAllGames', () => {
+  const originalFetch = global.fetch;
+  const originalDocument = (globalThis as { document?: unknown }).document;
+
+  afterEach(() => {
+    global.fetch = originalFetch;
+    if (originalDocument === undefined) {
+      delete (globalThis as { document?: unknown }).document;
+    } else {
+      (globalThis as { document?: unknown }).document = originalDocument;
+    }
+    jest.resetAllMocks();
+  });
+
+  function mockLeagueFetch(days: { date: string; games: ReturnType<typeof makeApiGame>[] }[]) {
+    global.fetch = jest.fn().mockResolvedValue({
+      ok: true,
+      json: async () => ({ gameWeek: days }),
+    }) as unknown as typeof fetch;
+  }
+
+  it('flattens games from all days into a single array', async () => {
+    delete (globalThis as { document?: unknown }).document;
+    mockLeagueFetch([
+      { date: '2026-01-13', games: [makeApiGame({ id: 1, homeAbbrev: 'SEA', awayAbbrev: 'VAN' })] },
+      { date: '2026-01-15', games: [makeApiGame({ id: 2, homeAbbrev: 'BOS', awayAbbrev: 'TOR' })] },
+    ]);
+
+    const games = await getAllGames();
+    expect(games).toHaveLength(2);
+    expect(games[0].id).toBe('1');
+    expect(games[1].id).toBe('2');
+  });
+
+  it('maps home team as the perspective team', async () => {
+    delete (globalThis as { document?: unknown }).document;
+    mockLeagueFetch([
+      { date: '2026-01-13', games: [makeApiGame({ homeAbbrev: 'BOS', homeName: 'Boston', awayAbbrev: 'TOR', awayName: 'Toronto' })] },
+    ]);
+
+    const [game] = await getAllGames();
+    expect(game.teamAbbrev).toBe('BOS');
+    expect(game.opponent).toBe('Toronto');
+    expect(game.homeAway).toBe('home');
+  });
+
+  it('uses native URL without CORS proxy', async () => {
+    delete (globalThis as { document?: unknown }).document;
+    mockLeagueFetch([]);
+
+    await getAllGames();
+
+    expect(global.fetch).toHaveBeenCalledWith('https://api-web.nhle.com/v1/schedule/now');
+  });
+
+  it('uses CORS proxy on web', async () => {
+    (globalThis as { document?: unknown }).document = {};
+    mockLeagueFetch([]);
+
+    await getAllGames();
+
+    expect(global.fetch).toHaveBeenCalledWith(
+      'https://corsproxy.io/?https://api-web.nhle.com/v1/schedule/now',
+    );
+  });
+
+  it('throws a friendly error on non-OK response', async () => {
+    delete (globalThis as { document?: unknown }).document;
+    global.fetch = jest.fn().mockResolvedValue({ ok: false }) as unknown as typeof fetch;
+
+    await expect(getAllGames()).rejects.toThrow('Could not load schedule');
+  });
+
+  it('throws a friendly error when fetch rejects', async () => {
+    delete (globalThis as { document?: unknown }).document;
+    global.fetch = jest.fn().mockRejectedValue(new Error('network error')) as unknown as typeof fetch;
+
+    await expect(getAllGames()).rejects.toThrow('Could not load schedule');
   });
 });
 

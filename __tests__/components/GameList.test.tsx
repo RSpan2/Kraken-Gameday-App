@@ -69,4 +69,30 @@ describe('GameList', () => {
     render(<GameList games={FINAL_GAMES} loading={false} error={null} tab="upcoming" onTabChange={jest.fn()} />);
     expect(screen.queryByText('NEXT GAME')).toBeNull();
   });
+
+  it('shows date headers when groupByDate is true', () => {
+    const games = [
+      makeGame({ id: '1', opponent: 'Oilers', date: 'Mon, Jan 13' }),
+      makeGame({ id: '2', opponent: 'Kings', date: 'Wed, Jan 15' }),
+    ];
+    render(<GameList games={games} loading={false} error={null} tab="upcoming" onTabChange={jest.fn()} groupByDate />);
+    expect(screen.getByText('Mon, Jan 13')).toBeTruthy();
+    expect(screen.getByText('Wed, Jan 15')).toBeTruthy();
+  });
+
+  it('groups games under their date header when groupByDate is true', () => {
+    const games = [
+      makeGame({ id: '1', opponent: 'Oilers', opponentAbbrev: 'EDM', date: 'Mon, Jan 13' }),
+      makeGame({ id: '2', opponent: 'Kings', opponentAbbrev: 'LAK', date: 'Mon, Jan 13' }),
+    ];
+    render(<GameList games={games} loading={false} error={null} tab="upcoming" onTabChange={jest.fn()} groupByDate />);
+    expect(screen.getByText('SEA vs EDM')).toBeTruthy();
+    expect(screen.getByText('SEA vs LAK')).toBeTruthy();
+  });
+
+  it('hides Upcoming/Previous tabs when groupByDate is true', () => {
+    render(<GameList games={[]} loading={false} error={null} tab="upcoming" onTabChange={jest.fn()} groupByDate />);
+    expect(screen.queryByText('Upcoming')).toBeNull();
+    expect(screen.queryByText('Previous')).toBeNull();
+  });
 });

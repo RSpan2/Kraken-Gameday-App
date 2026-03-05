@@ -44,3 +44,8 @@ pnpm-debug.*
 # generated native folders
 /ios
 /android
+
+.eas/
+credentials.json
+*.apk
+*.aab
